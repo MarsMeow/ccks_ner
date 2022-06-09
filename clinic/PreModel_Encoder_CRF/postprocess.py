@@ -14,7 +14,7 @@ from metrics import get_entities
 
 # 参数解析器
 parser = argparse.ArgumentParser()
-parser.add_argument('--ex_index', type=int, default=1, help="实验名称索引")
+parser.add_argument('--ex_index', type=int, default=2, help="实验名称索引")
 parser.add_argument('--mode', type=str, default='test', help="后处理结果类型")
 
 

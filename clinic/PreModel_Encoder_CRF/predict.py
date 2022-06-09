@@ -18,7 +18,7 @@ from dataloader import NERDataLoader
 parser = argparse.ArgumentParser()
 # 设定参数
 parser.add_argument('--seed', type=int, default=2020, help="random seed for initialization")
-parser.add_argument('--ex_index', type=int, default=1, help="实验名称索引")
+parser.add_argument('--ex_index', type=int, default=2, help="实验名称索引")
 parser.add_argument('--device_id', type=int, default=0, help="GPU index")
 parser.add_argument('--restore_file', type=str, default='best', required=False,
                     help="Optional, name of the file containing weights to reload before training")
