@@ -11,6 +11,30 @@ from transformers import BertTokenizer
 from dataloader_utils import read_examples, convert_examples_to_features
 
 
+class WordDict(object):
+    """
+    Dict class to store the word
+    """
+
+    def __init__(self, wordvec_path, tokenizer, custom, max_word_in_seq=32):
+        """Constructs WordDict
+        Args:
+            custom (bool): 是否自定义词表（随机初始化词向量）
+        """
+        self.wordvec_path = wordvec_path
+        self.max_word_in_seq = max_word_in_seq
+        self.id_to_word_list = [] if custom else ['[UNK]']
+        self.word_to_id_dict = {} if custom else {'[UNK]': 0}
+
+        with open(self.wordvec_path, "r", encoding="utf-8") as fin:
+            for i, line in enumerate(fin):
+                word = line.split(" ")[0]
+                tokens = tuple(tokenizer.tokenize(word))
+                self.id_to_word_list.append(tokens)
+                self.word_to_id_dict[tokens] = i + 1
+        print('WordDict has been generated!')
+
+
 class FeatureDataset(Dataset):
     """Pytorch Dataset for InputFeatures
     """
@@ -40,6 +64,8 @@ class NERDataLoader(object):
         self.max_seq_length = params.max_seq_length
         self.tokenizer = BertTokenizer(vocab_file=os.path.join(params.bert_model_dir, 'vocab.txt'),
                                        do_lower_case=True)
+        # 词向量
+        self.word_dict = WordDict(wordvec_path=self.params.word_vec_dir, tokenizer=self.tokenizer, custom=params.custom_wordvec)
         # 保存数据(Bool)
         self.data_cache = params.data_cache
 
@@ -79,7 +105,8 @@ class NERDataLoader(object):
             features = torch.load(cache_path)
         else:
             # 生成数据
-            features = convert_examples_to_features(self.params, examples, self.tokenizer, greed_split=False)
+            features = convert_examples_to_features(self.params, examples, self.tokenizer, greed_split=False,
+                                                    word_dict=self.word_dict)
             # save data
             if self.data_cache:
                 torch.save(features, cache_path)

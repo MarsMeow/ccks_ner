@@ -14,28 +14,35 @@ import torch.nn.init as init
 
 # 定义实体标注
 EN_DICT = {
-    '疾病和诊断': ['B-DIS', 'I-DIS'],
-    '影像检查': ['B-SCR', 'I-SCR'],
-    '实验室检验': ['B-LAB', 'I-LAB'],
-    '手术': ['B-OPE', 'I-OPE'],
-    '药物': ['B-MED', 'I-MED'],
-    '解剖部位': ['B-POS', 'I-POS'],
-    'Others': 'O'
+    'Others': 'O',
+    '身体': ['B-bod', 'I-bod'],
+    '科室': ['B-dep', 'I-dep'],
+    '疾病': ['B-dis', 'I-dis'],
+    '药物': ['B-dru', 'I-dru'],
+    '医疗设备': ['B-equ', 'I-equ'],
+    '医学检验项目': ['B-ite', 'I-ite'],
+    '微生物类': ['B-mic', 'I-mic'],
+    '医疗程序': ['B-pro', 'I-pro'],
+    '临床表现': ['B-sym', 'I-sym'],
 }
 
 IO2STR = {
-    'DIS': '疾病和诊断',
-    'SCR': '影像检查',
-    'LAB': '实验室检验',
-    'OPE': '手术',
-    'MED': '药物',
-    'POS': '解剖部位'
+    'dis': '疾病和诊断',
+    'sym': '临床表现',
+    'pro': '医疗程序',
+    'equ': '医疗设备',
+    'dru': '药物',
+    'ite': '医学检验项目',
+    'bod': '身体',
+    'dep': '科室',
+    'mic': '微生物类'
 }
 STR2IO = {v: k for k, v in IO2STR.items()}
 
 PreModelDir = {
     "NEZHA": 'nezha-large',
-    "RoBERTa": 'medbert-large',
+    "RoBERTa": 'medbert-base-chinese',
+    "PERT": 'chinese-pert-base',
     "ELECTRA": 'electra-large'
 }
 
@@ -48,7 +55,7 @@ class Params:
         # 根路径
         self.root_path = Path(os.path.abspath(os.path.dirname(__file__)))
         # 数据集路径
-        self.data_dir = self.root_path / f'data'
+        self.data_dir = self.root_path / f'data/CBLUEDatasets'
         # 参数路径
         self.params_path = self.root_path / f'experiments/ex{ex_index}'
         # 模型保存路径
@@ -59,6 +66,13 @@ class Params:
         self.ds_encoder_type = 'LSTM'
         # 预训练模型路径
         self.bert_model_dir = self.root_path.parent.parent / f'{PreModelDir[self.pre_model_type]}'
+        
+        # 是否使用预训练word embedding
+        self.custom_wordvec = True
+        # 预训练word embedding路径
+        self.word_vec_dir = self.root_path / (
+            'word_vec/vocab.txt' if self.custom_wordvec else 'word_vec/med_vec_dict.vector')
+        
         # device
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.n_gpu = torch.cuda.device_count()
@@ -79,7 +93,7 @@ class Params:
         # 容纳的提高量(f1-score)
         self.patience = 0.1
         # 容纳多少次未提高
-        self.patience_num = 3
+        self.patience_num = 5
 
         self.seed = 2020
         # 句子最大长度(pad)

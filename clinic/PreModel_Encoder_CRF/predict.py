@@ -23,8 +23,8 @@ parser.add_argument('--device_id', type=int, default=0, help="GPU index")
 parser.add_argument('--restore_file', type=str, default='best', required=False,
                     help="Optional, name of the file containing weights to reload before training")
 parser.add_argument('--mode', default='test', help="'val', 'test' or 'pseudo'")
-parser.add_argument('--pre_model_type', type=str, help="预训练模型类型")
-parser.add_argument('--ds_encoder_type', type=str, help="下游编码器类型")
+parser.add_argument('--pre_model_type', default='RoBERTa', type=str, help="预训练模型类型")
+parser.add_argument('--ds_encoder_type', default='LSTM', type=str, help="下游编码器类型")
 
 
 def predict(model, data_iterator, params, mode):

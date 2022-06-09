@@ -1,1 +1,2 @@
 nezha-large/ filter=lfs diff=lfs merge=lfs -text
+nezha-large/pytorch_model.bin filter=lfs diff=lfs merge=lfs -text

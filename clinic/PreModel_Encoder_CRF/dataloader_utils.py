@@ -1,8 +1,157 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """dataloader.py utils"""
-
 import re
+import random
+import math
+import os
+from cblue.utils import load_json, load_dict, write_dict
+from torch.utils.data import Dataset
+
+class EEDataProcessor(object):
+    def __init__(self, root, is_lower=True, no_entity_label='O'):
+        self.task_data_dir = os.path.join(root, 'CMeEE')
+        self.train_path = os.path.join(self.task_data_dir, 'CMeEE_train.json')
+        self.dev_path = os.path.join(self.task_data_dir, 'CMeEE_dev.json')
+        self.test_path = os.path.join(self.task_data_dir, 'CMeEE_test.json')
+
+        self.label_map_cache_path = os.path.join(self.task_data_dir, 'CMeEE_label_map.dict')
+        self.label2id = None
+        self.id2label = None
+        self.no_entity_label = no_entity_label
+        self._get_labels()
+        self.num_labels = len(self.label2id.keys())
+
+        self.is_lower = is_lower
+
+    def get_train_sample(self):
+        return self._pre_process(self.train_path, is_predict=False)
+
+    def get_dev_sample(self):
+        return self._pre_process(self.dev_path, is_predict=False)
+
+    def get_test_sample(self):
+        return self._pre_process(self.test_path, is_predict=True)
+
+    def _get_labels(self):
+        if os.path.exists(self.label_map_cache_path):
+            label_map = load_dict(self.label_map_cache_path)
+        else:
+            label_set = set()
+            samples = load_json(self.train_path)
+            for sample in samples:
+                for entity in sample["entities"]:
+                    label_set.add(entity['type'])
+            label_set = sorted(label_set)
+            labels = [self.no_entity_label]
+            for label in label_set:
+                labels.extend(["B-{}".format(label), "I-{}".format(label)])
+            label_map = {idx: label for idx, label in enumerate(labels)}
+            write_dict(self.label_map_cache_path, label_map)
+        self.id2label = label_map
+        self.label2id = {val: key for key, val in self.id2label.items()}
+
+    def _pre_process(self, path, is_predict):
+        def label_data(data, start, end, _type):
+            """label_data"""
+            for i in range(start, end + 1):
+                suffix = "B-" if i == start else "I-"
+                data[i] = "{}{}".format(suffix, _type)
+            return data
+
+        outputs = {'text': [], 'label': [], 'orig_text': []}
+        samples = load_json(path)
+        for data in samples:
+            if self.is_lower:
+                text_a = ["，" if t == " " or t == "\n" or t == "\t" else t
+                          for t in list(data["text"].lower())]
+            else:
+                text_a = ["，" if t == " " or t == "\n" or t == "\t" else t
+                          for t in list(data["text"])]
+            # text_a = "\002".join(text_a)
+            outputs['text'].append(text_a)
+            outputs['orig_text'].append(data['text'])
+            if not is_predict:
+                labels = [self.no_entity_label] * len(text_a)
+                for entity in data['entities']:
+                    start_idx, end_idx, type = entity['start_idx'], entity['end_idx'], entity['type']
+                    labels = label_data(labels, start_idx, end_idx, type)
+                outputs['label'].append('\002'.join(labels))
+            elif is_predict:
+                labels = [self.no_entity_label] * len(text_a)
+                outputs['label'].append('\002'.join(labels))
+        return outputs
+
+    def extract_result(self, results, test_input):
+        predicts = []
+        for j in range(len(results)):
+            text = "".join(test_input[j])
+            ret = []
+            entity_name = ""
+            flag = []
+            visit = False
+            start_idx, end_idx = 0, 0
+            for i, (char, tag) in enumerate(zip(text, results[j])):
+                tag = self.id2label[tag]
+                if tag[0] == "B":
+                    if entity_name != "":
+                        x = dict((a, flag.count(a)) for a in flag)
+                        y = [k for k, v in x.items() if max(x.values()) == v]
+                        ret.append({"start_idx": start_idx, "end_idx": end_idx, "type": y[0], "entity": entity_name})
+                        flag.clear()
+                        entity_name = ""
+                    visit = True
+                    start_idx = i
+                    entity_name += char
+                    flag.append(tag[2:])
+                    end_idx = i
+                elif tag[0] == "I" and visit:
+                    entity_name += char
+                    flag.append(tag[2:])
+                    end_idx = i
+                else:
+                    if entity_name != "":
+                        x = dict((a, flag.count(a)) for a in flag)
+                        y = [k for k, v in x.items() if max(x.values()) == v]
+                        ret.append({"start_idx": start_idx, "end_idx": end_idx, "type": y[0], "entity": entity_name})
+                        flag.clear()
+                    start_idx = i + 1
+                    visit = False
+                    flag.clear()
+                    entity_name = ""
+
+            if entity_name != "":
+                x = dict((a, flag.count(a)) for a in flag)
+                y = [k for k, v in x.items() if max(x.values()) == v]
+                ret.append({"start_idx": start_idx, "end_idx": end_idx, "type": y[0], "entity": entity_name})
+            predicts.append(ret)
+        return predicts
+
+class EEDataset(Dataset):
+    def __init__(
+            self,
+            samples,
+            data_processor,
+            mode='train',
+            max_length=128,
+            model_type='bert',
+            ngram_dict=None
+    ):
+        super(EEDataset, self).__init__()
+
+        self.orig_text = samples['orig_text']
+        self.texts = samples['text']
+
+        self.labels = samples['label']
+
+        self.data_processor = data_processor
+        self.max_length = max_length
+        self.mode = mode
+        self.ngram_dict = ngram_dict
+        self.model_type = model_type
+
+    def __len__(self):
+        return len(self.texts)
 
 
 def split_text(text, max_len, split_pat=r'([，。]”?)', greedy=False):
@@ -145,17 +294,54 @@ def read_examples(data_dir, data_sign):
     :return examples (List[InputExample])
     """
     examples = []
+
+    data_processor = EEDataProcessor(root=data_dir, is_lower=False)
+    dataset_class = EEDataset
+    if data_sign == 'train':
+        train_samples = data_processor.get_train_sample()
+        train_dataset = dataset_class(train_samples, data_processor, mode='train',
+                                      model_type='hmm', ngram_dict=None, max_length=128)
+        for label_idx in range(len(train_dataset.labels)):  # 15000
+            train_dataset.labels[label_idx] = train_dataset.labels[label_idx].split('\002')
+        word_lists = train_dataset.texts
+        tag_lists = train_dataset.labels
+
+    elif data_sign == 'val':
+        eval_samples = data_processor.get_dev_sample()
+        eval_dataset = dataset_class(eval_samples, data_processor, mode='eval',
+                                     model_type='hmm', ngram_dict=None, max_length=128)
+        for label_idx in range(len(eval_dataset.labels)):
+            eval_dataset.labels[label_idx] = eval_dataset.labels[label_idx].split('\002')
+        word_lists = eval_dataset.texts
+        tag_lists = eval_dataset.labels
+
+    elif data_sign == 'test':
+        test_samples = data_processor.get_test_sample()
+        test_dataset = dataset_class(test_samples, data_processor, mode='test', ngram_dict=None,
+                                     max_length=128, model_type='hmm')
+        for label_idx in range(len(test_dataset.labels)):
+            test_dataset.labels[label_idx] = test_dataset.labels[label_idx].split('\002')
+        word_lists = test_dataset.texts
+        tag_lists = test_dataset.labels
+
+    for sen, tag in zip(word_lists, tag_lists):
+        example = InputExample(sentence=sen, tag=tag)
+        examples.append(example)    
+
     # read src data
+    '''
     with open(data_dir / f'{data_sign}/sentences.txt', "r", encoding='utf-8') as f_sen, \
             open(data_dir / f'{data_sign}/tags.txt', 'r', encoding='utf-8') as f_tag:
         for sen, tag in zip(f_sen, f_tag):
             example = InputExample(sentence=sen.strip().split(' '), tag=tag.strip().split(' '))
             examples.append(example)
     print("InputExamples:", len(examples))
+    '''
     return examples
 
 
-def convert_examples_to_features(params, examples, tokenizer, pad_sign=True, greed_split=True):
+#def convert_examples_to_features(params, examples, tokenizer, pad_sign=True, greed_split=True):
+def convert_examples_to_features(params, examples, tokenizer, word_dict, pad_sign=True, greed_split=True):
     """convert examples to features.
     :param examples (List[InputExamples])
     :param pad_sign: 是否补零
@@ -209,6 +395,40 @@ def convert_examples_to_features(params, examples, tokenizer, pad_sign=True, gre
 
             # mask
             input_mask = [1 if idx > 0 else 0 for idx in text_ids]
+
+            word_matches = []
+            #  Filter the word segment from 2 to 7 to check whether there is a word
+            for p in range(2, 8):
+                for q in range(0, len(text_tokens) - p + 1):
+                    character_segment = text_tokens[q:q + p]
+                    # j is the starting position of the word
+                    # i is the length of the current word
+                    character_segment = tuple(character_segment)
+                    if character_segment in word_dict.word_to_id_dict:
+                        word_index = word_dict.word_to_id_dict[character_segment]
+                        word_matches.append([word_index, q, p, character_segment])
+
+            random.shuffle(word_matches)
+            # max_word_in_seq_proportion = max_word_in_seq
+            max_word_in_seq_proportion = math.ceil((len(text_tokens) / max_len) * word_dict.max_word_in_seq)
+            if len(word_matches) > max_word_in_seq_proportion:
+                word_matches = word_matches[:max_word_in_seq_proportion]
+
+            word_ids = [word[0] for word in word_matches]
+            word_positions = [word[1] for word in word_matches]
+            word_lengths = [word[2] for word in word_matches]
+            word_tuples = [word[3] for word in word_matches]
+
+            import numpy as np
+
+            # record the masked positions
+            word_positions_matrix = np.zeros(shape=(max_len, word_dict.max_word_in_seq), dtype=np.int32)
+            for i in range(len(word_ids)):
+                word_positions_matrix[word_positions[i]:word_positions[i] + word_lengths[i], i] = 1.0
+
+            # Zero-pad up to the max word in seq length.
+            padding = [0] * (word_dict.max_word_in_seq - len(word_ids))
+            word_ids += padding
 
             # get features
             features.append(

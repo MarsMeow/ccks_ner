@@ -25,16 +25,17 @@ from dataloader import NERDataLoader
 from model import BertForTokenClassification
 
 # 设定参数
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=2020, help="random seed for initialization")
-parser.add_argument('--ex_index', type=int, default=1, help="实验名称索引")
+parser.add_argument('--ex_index', type=int, default=2, help="实验名称索引")
 parser.add_argument('--device_id', type=int, default=0, help="GPU index")
 parser.add_argument('--restore_file', default=None,
                     help="Optional, name of the file containing weights to reload before training")
-parser.add_argument('--epoch_num', required=True, type=int, help="number of epochs")
+parser.add_argument('--epoch_num', type=int, default=20, help="number of epochs")
 parser.add_argument('--multi_gpu', action='store_true', help="是否多GPU")
-parser.add_argument('--pre_model_type', type=str, help="预训练模型类型")
-parser.add_argument('--ds_encoder_type', type=str, help="下游编码器类型")
+parser.add_argument('--pre_model_type', type=str, default="PERT", help="预训练模型类型")
+parser.add_argument('--ds_encoder_type', type=str, default="LSTM", help="下游编码器类型")
 
 
 def train(model, data_iterator, optimizer, params):
@@ -113,7 +114,7 @@ def train_and_evaluate(model, params, restore_file=None):
     # 取模型权重
     param_optimizer = list(model.named_parameters())
     # pretrain model param
-    param_pre = [(n, p) for n, p in param_optimizer if 'bert' in n or 'electra' in n]
+    param_pre = [(n, p) for n, p in param_optimizer if 'bert' in n or 'electra' in n or 'pert' in n]
     # middle model param
     param_middle = [(n, p) for n, p in param_optimizer if
                     not any([s in n for s in ('bert', 'crf', 'electra')]) or 'dym_weight' in n]
@@ -203,24 +204,26 @@ if __name__ == '__main__':
     # set type
     params.ds_encoder_type = args.ds_encoder_type
 
-    if args.multi_gpu:
+    '''if args.multi_gpu:
         params.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         n_gpu = torch.cuda.device_count()
         params.n_gpu = n_gpu
     else:
-        # 设置模型使用的gpu
-        torch.cuda.set_device(args.device_id)
-        # 查看现在使用的设备
-        print('current device:', torch.cuda.current_device())
-        n_gpu = 1
-        params.n_gpu = n_gpu
+    '''
+    # 设置模型使用的gpu
+    torch.cuda.set_device(args.device_id)
+    # 查看现在使用的设备
+    print('current device:', torch.cuda.current_device())
+    n_gpu = 1
+    params.n_gpu = n_gpu
 
     # Set the random seed for reproducible experiments
     random.seed(args.seed)
     torch.manual_seed(args.seed)
     params.seed = args.seed
-    if n_gpu > 0:
+    '''if n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
+    '''
 
     # Set the logger
     utils.set_logger(save=True, log_path=os.path.join(params.params_path, 'train.log'))
@@ -238,8 +241,13 @@ if __name__ == '__main__':
         model = BertForTokenClassification.from_pretrained(config=bert_config,
                                                            pretrained_model_name_or_path=params.bert_model_dir,
                                                            params=params)
+    elif params.pre_model_type == 'PERT':
+        bert_config = BertConfig.from_json_file(os.path.join(params.bert_model_dir, 'config.json'))
+        model = BertForTokenClassification.from_pretrained(config=bert_config,
+                                                           pretrained_model_name_or_path=params.bert_model_dir,
+                                                           params=params)
     else:
-        raise ValueError('Pre-train Model type must be NEZHA or ELECTRA or RoBERTa!')
+        raise ValueError('Pre-train Model type must be NEZHA or ELECTRA or RoBERTa or PERT!')
     logging.info('-done')
 
     # Train and evaluate the model
