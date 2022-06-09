@@ -10,10 +10,10 @@ def generate_voc(freq=2):
     """利用分词工具生成词向量词表
     """
     # load dict
-    jieba.load_userdict('./custom_vocab.txt')
+    jieba.load_userdict('/home/zcm/projs/ccks_ner/clinic/PreModel_Encoder_CRF/word_vec/custom_vocab.txt')
     # get all data
     sentences = []
-    data_dir = ['../data/train/', '../data/val/', '../data/test/']
+    data_dir = ['/home/zcm/projs/ccks_ner/clinic/PreModel_Encoder_CRF/data/train/', '/home/zcm/projs/ccks_ner/clinic/PreModel_Encoder_CRF/data/val/', '/home/zcm/projs/ccks_ner/clinic/PreModel_Encoder_CRF/data/test/']
     for dir_ in data_dir:
         with open(dir_ + 'sentences.txt', 'r', encoding='utf-8') as f_sen:
             sentences.extend([''.join(line.strip().split(' ')) for line in f_sen])
